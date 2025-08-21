@@ -46,16 +46,34 @@ st.markdown("---")
 st.subheader("💬 Text Chat Assistant")
 components.html(
     """
-    <style>
-      vapi-widget button { display: none !important; }
-    </style>
-    <vapi-widget assistant-id="fb332ae2-bf30-4bfe-a435-db8ceb966b1b" public-key="09b432a0-3fb6-4462-b47d-e7a50c8bf38c"></vapi-widget>
+    <!-- Load the official script first, then the widget element -->
+    <script src=\"https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js\" async type=\"text/javascript\"></script>
 
-    <script
-      src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"
-      async
-      type="text/javascript"
-    ></script>
+    <!-- Text-only chat mode; full-size so no floating voice button appears -->
+    <vapi-widget
+      public-key=\"09b432a0-3fb6-4462-b47d-e7a50c8bf38c\"
+      assistant-id=\"fb332ae2-bf30-4bfe-a435-db8ceb966b1b\"
+      mode=\"chat\"
+      size=\"full\"
+      theme=\"light\"
+      radius=\"large\"
+      empty-chat-message=\"Hi! I’m the Yamas assistant — how can I help today?\"
+    ></vapi-widget>
+
+    <script>
+      // Optional: capture widget errors and surface something friendly
+      document.addEventListener('DOMContentLoaded', function() {
+        const widget = document.querySelector('vapi-widget');
+        widget?.addEventListener('error', (e) => {
+          const err = e.detail;
+          console.error('Vapi widget error:', err);
+          const note = document.getElementById('vapi-error-note');
+          if (note) note.textContent = 'The assistant had trouble loading. Please refresh — and ensure you are on HTTPS.';
+        });
+      });
+    </script>
+    <div id=\"vapi-error-note\" style=\"font-size:12px;color:#6b7280;margin-top:6px;\"></div>
     """,
-    height=400,
+    height=560,
+    scrolling=True,
 )
