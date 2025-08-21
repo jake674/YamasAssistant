@@ -1,71 +1,61 @@
 import streamlit as st
-from textwrap import dedent
+import streamlit.components.v1 as components
 
-st.set_page_config(page_title="Yamas Assistant", page_icon="🎣", layout="wide")
+# Title
+st.set_page_config(page_title="QuickList + Vapi Widget", page_icon="✅", layout="centered")
+st.title("📋 QuickList with Voice Assistant")
 
-# Minimalistic styling for a clean, mobile-friendly look
-st.markdown(
+st.markdown("""
+This is a demo web app for **Yamas** that works on iPhones. It includes:
+- A simple to-do list (QuickList)
+- The Vapi AI widget for text chat only (no voice button)
+
+You can also add this app to your iPhone's home screen via Safari.
+""")
+
+# QuickList implementation (basic Streamlit version)
+if "items" not in st.session_state:
+    st.session_state.items = []
+
+new_item = st.text_input("Add a new item:", key="new_item")
+if st.button("➕ Add"):
+    if new_item.strip():
+        st.session_state.items.append({"text": new_item.strip(), "done": False})
+        st.session_state.new_item = ""  # clear field
+
+# Render list
+for idx, item in enumerate(st.session_state.items):
+    cols = st.columns([0.1, 0.7, 0.2])
+    with cols[0]:
+        done = st.checkbox("", value=item["done"], key=f"done_{idx}")
+        st.session_state.items[idx]["done"] = done
+    with cols[1]:
+        st.write("~~" + item["text"] + "~~" if item["done"] else item["text"])
+    with cols[2]:
+        if st.button("🗑️", key=f"del_{idx}"):
+            st.session_state.items.pop(idx)
+            st.experimental_rerun()
+
+if st.button("🧹 Clear completed"):
+    st.session_state.items = [i for i in st.session_state.items if not i["done"]]
+
+# Spacer
+st.markdown("---")
+
+# Embed Vapi widget (text chat only, no button)
+st.subheader("💬 Text Chat Assistant")
+components.html(
     """
     <style>
-      .block-container {padding-top: 0.75rem; padding-bottom: 1rem;}
-      header {visibility: hidden;} /* hide default Streamlit header */
-      /* Give the widget plenty of room on iPhone */
-      .widget-wrap {height: 80vh;}
-      @media (max-width: 420px) {
-        .widget-wrap {height: 82vh;}
-      }
+      vapi-widget button { display: none !important; }
     </style>
+    <vapi-widget assistant-id="fb332ae2-bf30-4bfe-a435-db8ceb966b1b" public-key="09b432a0-3fb6-4462-b47d-e7a50c8bf38c"></vapi-widget>
+
+    <script
+      src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"
+      async
+      type="text/javascript"
+    ></script>
     """,
-    unsafe_allow_html=True,
+    height=400,
 )
-
-st.markdown("# Yamas Assistant")
-st.caption("Embedded Vapi widget running inside Streamlit. Optimized for iPhone.")
-
-# You shared these exact values — placed here as variables so you can tweak later if needed.
-ASSISTANT_ID = "fb332ae2-bf30-4bfe-a435-db8ceb966b1b"
-PUBLIC_KEY = "09b432a0-3fb6-4462-b47d-e7a50c8bf38c"
-
-# The raw HTML + script. Streamlit safely sandboxes this in an iframe.
-html = f"""
-<!DOCTYPE html>
-<html lang=\"en\">
-  <head>
-    <meta charset=\"utf-8\" />
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\" />
-    <style>
-      body {{ margin: 0; font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }}
-      .wrap {{ display: flex; flex-direction: column; gap: 12px; padding: 12px; height: 100vh; box-sizing: border-box; }}
-      .card {{ border: 1px solid #e5e7eb; border-radius: 16px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }}
-      .widget {{ flex: 1; display: flex; align-items: stretch; justify-content: center; }}
-    </style>
-  </head>
-  <body>
-    <div class=\"wrap\">
-      <div class=\"card\">
-        <strong>Vapi Voice Widget</strong>
-        <div style=\"font-size: 12px; color: #6b7280;\">Tap the mic to start talking.</div>
-      </div>
-      <div class=\"widget card\">
-        <vapi-widget assistant-id=\"{ASSISTANT_ID}\" public-key=\"{PUBLIC_KEY}\"></vapi-widget>
-      </div>
-    </div>
-
-    <script src=\"https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js\" async type=\"text/javascript\"></script>
-  </body>
-</html>
-"""
-
-# Render the widget in Streamlit. Increase height if you want a taller embed.
-st.components.v1.html(html, height=760, scrolling=True)
-
-with st.expander("Tips for iPhone usage", expanded=False):
-    st.markdown(
-        """
-        - For a more app-like feel, open your Streamlit URL in Safari and use **Share → Add to Home Screen**.
-        - This page uses `viewport-fit=cover` to respect the iPhone notch/safe areas.
-        - If the widget needs the full height on smaller phones, raise the `height` parameter in `st.components.v1.html(...)`.
-        """
-    )
-
-st.info("If your widget requires additional permissions (mic access), Safari will prompt on first use.")
