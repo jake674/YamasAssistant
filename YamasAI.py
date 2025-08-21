@@ -19,7 +19,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown("# Codfather Assistant")
+st.markdown("# Yamas Assistant")
 st.caption("Embedded Vapi widget running inside Streamlit. Optimized for iPhone.")
 
 # You shared these exact values — placed here as variables so you can tweak later if needed.
