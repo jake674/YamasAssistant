@@ -1,79 +1,102 @@
+import os
 import streamlit as st
-import streamlit.components.v1 as components
+from openai import OpenAI
 
-# Title
-st.set_page_config(page_title="QuickList + Vapi Widget", page_icon="✅", layout="centered")
-st.title("📋 QuickList with Voice Assistant")
-
-st.markdown("""
-This is a demo web app for **Yamas** that works on iPhones. It includes:
-- A simple to-do list (QuickList)
-- The Vapi AI widget for text chat only (no voice button)
-
-You can also add this app to your iPhone's home screen via Safari.
-""")
-
-# QuickList implementation (basic Streamlit version)
-if "items" not in st.session_state:
-    st.session_state.items = []
-
-new_item = st.text_input("Add a new item:", key="new_item")
-if st.button("➕ Add"):
-    if new_item.strip():
-        st.session_state.items.append({"text": new_item.strip(), "done": False})
-        st.session_state.new_item = ""  # clear field
-
-# Render list
-for idx, item in enumerate(st.session_state.items):
-    cols = st.columns([0.1, 0.7, 0.2])
-    with cols[0]:
-        done = st.checkbox("", value=item["done"], key=f"done_{idx}")
-        st.session_state.items[idx]["done"] = done
-    with cols[1]:
-        st.write("~~" + item["text"] + "~~" if item["done"] else item["text"])
-    with cols[2]:
-        if st.button("🗑️", key=f"del_{idx}"):
-            st.session_state.items.pop(idx)
-            st.experimental_rerun()
-
-if st.button("🧹 Clear completed"):
-    st.session_state.items = [i for i in st.session_state.items if not i["done"]]
-
-# Spacer
-st.markdown("---")
-
-# Embed Vapi widget (text chat only, no button)
-st.subheader("💬 Text Chat Assistant")
-components.html(
+# ---------------- Page setup (mobile friendly) ----------------
+st.set_page_config(page_title="Yamas Chat", page_icon="🍣", layout="centered")
+st.markdown(
     """
-    <!-- Load the official script first, then the widget element -->
-    <script src=\"https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js\" async type=\"text/javascript\"></script>
-
-    <!-- Text-only chat mode; full-size so no floating voice button appears -->
-    <vapi-widget
-      public-key=\"09b432a0-3fb6-4462-b47d-e7a50c8bf38c\"
-      assistant-id=\"fb332ae2-bf30-4bfe-a435-db8ceb966b1b\"
-      mode=\"chat\"
-      size=\"full\"
-      theme=\"light\"
-      radius=\"large\"
-      empty-chat-message=\"Hi! I’m the Yamas assistant — how can I help today?\"
-    ></vapi-widget>
-
-    <script>
-      // Optional: capture widget errors and surface something friendly
-      document.addEventListener('DOMContentLoaded', function() {
-        const widget = document.querySelector('vapi-widget');
-        widget?.addEventListener('error', (e) => {
-          const err = e.detail;
-          console.error('Vapi widget error:', err);
-          const note = document.getElementById('vapi-error-note');
-          if (note) note.textContent = 'The assistant had trouble loading. Please refresh — and ensure you are on HTTPS.';
-        });
-      });
-    </script>
-    <div id=\"vapi-error-note\" style=\"font-size:12px;color:#6b7280;margin-top:6px;\"></div>
+    <style>
+      header {visibility: hidden;}                 /* hide default header */
+      .block-container {padding-top: .5rem;}       /* tighter spacing on iPhone */
+      .stChatFloatingInputContainer {bottom: env(safe-area-inset-bottom);} /* respect iOS safe area */
+    </style>
     """,
-    height=560,
-    scrolling=True,
+    unsafe_allow_html=True,
 )
+
+st.title("💬 Yamas Assistant")
+st.caption("Simple chat UI that calls your model. Optimized for iPhone.")
+
+# ---------------- Model configuration ----------------
+BACKEND = os.getenv("CHAT_BACKEND", "openai").lower()
+MODEL = os.getenv("CHAT_MODEL", "gpt-5.1-mini")
+SYSTEM_PROMPT = os.getenv(
+    "SYSTEM_PROMPT",
+    "You are the helpful Yamas restaurant assistant. Be concise, friendly, and action-oriented.",
+)
+
+# Allow user to paste their API key directly in the sidebar
+if "OPENAI_API_KEY" not in st.session_state:
+    st.session_state.OPENAI_API_KEY = ""
+
+with st.sidebar:
+    st.subheader("Settings")
+    st.session_state.OPENAI_API_KEY = st.text_input(
+        "OpenAI API Key",
+        type="password",
+        value=st.session_state.OPENAI_API_KEY,
+        placeholder="sk-...",
+    )
+    st.write(f"Backend: **{BACKEND}**")
+    if BACKEND == "openai":
+        st.write(f"Model: **{MODEL}**")
+    if st.button("Reset conversation"):
+        st.session_state.messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "assistant", "content": "Hi! I’m the Yamas assistant. How can I help today?"},
+        ]
+        st.rerun()
+
+client = None
+if BACKEND == "openai" and st.session_state.OPENAI_API_KEY:
+    client = OpenAI(api_key=st.session_state.OPENAI_API_KEY)
+
+# ---------------- Chat state ----------------
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "assistant", "content": "Hi! I’m the Yamas assistant. How can I help today?"},
+    ]
+
+# Render history (skip system)
+for m in st.session_state.messages:
+    if m["role"] == "system":
+        continue
+    with st.chat_message(m["role"]):
+        st.markdown(m["content"])  # supports markdown
+
+# Input
+user_text = st.chat_input("Type a message…")
+if user_text:
+    st.session_state.messages.append({"role": "user", "content": user_text})
+    with st.chat_message("user"):
+        st.markdown(user_text)
+
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+
+        if BACKEND == "openai" and client:
+            stream = client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.messages
+                    if m["role"] != "system"
+                ],
+                stream=True,
+            )
+            full = ""
+            for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices and chunk.choices[0].delta else None
+                content = getattr(delta, "content", None) if delta else None
+                if content:
+                    full += content
+                    placeholder.markdown(full)
+            st.session_state.messages.append({"role": "assistant", "content": full})
+        elif BACKEND == "custom":
+            reply = "(Custom backend not configured yet.)"
+            placeholder.markdown(reply)
+            st.session_state.messages.append({"role": "assistant", "content": reply})
+        else:
+            placeholder.warning("No API key set, so I can't reach the model yet.")
