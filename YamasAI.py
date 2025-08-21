@@ -1,102 +1,128 @@
 import os
+import requests
 import streamlit as st
-from openai import OpenAI
 
 # ---------------- Page setup (mobile friendly) ----------------
-st.set_page_config(page_title="Yamas Chat", page_icon="🍣", layout="centered")
+st.set_page_config(page_title="Yamas Chat (Vapi)", page_icon="🍣", layout="centered")
 st.markdown(
     """
     <style>
-      header {visibility: hidden;}                 /* hide default header */
-      .block-container {padding-top: .5rem;}       /* tighter spacing on iPhone */
-      .stChatFloatingInputContainer {bottom: env(safe-area-inset-bottom);} /* respect iOS safe area */
+      header {visibility: hidden;}
+      .block-container {padding-top: .5rem;}
+      .stChatFloatingInputContainer {bottom: env(safe-area-inset-bottom);} /* iOS safe area */
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("💬 Yamas Assistant")
-st.caption("Simple chat UI that calls your model. Optimized for iPhone.")
+st.title("💬 Yamas Assistant (via Vapi)")
+st.caption("Custom Streamlit chat that talks to your existing Vapi assistant — same model, same system prompts.")
 
-# ---------------- Model configuration ----------------
-BACKEND = os.getenv("CHAT_BACKEND", "openai").lower()
-MODEL = os.getenv("CHAT_MODEL", "gpt-5.1-mini")
-SYSTEM_PROMPT = os.getenv(
-    "SYSTEM_PROMPT",
-    "You are the helpful Yamas restaurant assistant. Be concise, friendly, and action-oriented.",
-)
+# ---------------- Vapi config ----------------
+VAPI_BASE_URL = os.getenv("VAPI_BASE_URL", "https://api.vapi.ai")
+ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID", "fb332ae2-bf30-4bfe-a435-db8ceb966b1b")  # Your Yamas assistant
+PUBLIC_KEY = os.getenv("VAPI_PUBLIC_KEY", "09b432a0-3fb6-4462-b47d-e7a50c8bf38c")     # not used for REST
 
-# Allow user to paste their API key directly in the sidebar
-if "OPENAI_API_KEY" not in st.session_state:
-    st.session_state.OPENAI_API_KEY = ""
-
+# Ask for the **Vapi Private API key** (NOT OpenAI).
+# Per Vapi docs, use a private API key for chat requests. Keep it server-side only.
+# https://docs.vapi.ai/chat/quickstart
 with st.sidebar:
-    st.subheader("Settings")
-    st.session_state.OPENAI_API_KEY = st.text_input(
-        "OpenAI API Key",
+    st.subheader("Vapi Settings")
+    if "VAPI_PRIVATE_KEY" not in st.session_state:
+       st.session_state.VAPI_PRIVATE_KEY = "e87fef95-50d3-4b1e-8825-cb998e8bcc19"
+    st.session_state.VAPI_PRIVATE_KEY = st.text_input(
+        "Vapi Private API Key",
         type="password",
-        value=st.session_state.OPENAI_API_KEY,
-        placeholder="sk-...",
+        value=st.session_state.VAPI_PRIVATE_KEY,
+        placeholder="vapi_...",
+        help="Required for REST calls to your Vapi assistant. Stored only in this session.",
     )
-    st.write(f"Backend: **{BACKEND}**")
-    if BACKEND == "openai":
-        st.write(f"Model: **{MODEL}**")
     if st.button("Reset conversation"):
-        st.session_state.messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "assistant", "content": "Hi! I’m the Yamas assistant. How can I help today?"},
-        ]
+        st.session_state.chat_id = None
+        st.session_state.messages = []
         st.rerun()
 
-client = None
-if BACKEND == "openai" and st.session_state.OPENAI_API_KEY:
-    client = OpenAI(api_key=st.session_state.OPENAI_API_KEY)
-
 # ---------------- Chat state ----------------
-if "messages" not in st.session_state:
+if "messages" not in st.session_state or not st.session_state.get("messages"):
     st.session_state.messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "assistant", "content": "Hi! I’m the Yamas assistant. How can I help today?"},
     ]
+if "chat_id" not in st.session_state:
+    st.session_state.chat_id = None  # we will pass this as previousChatId to maintain context
 
-# Render history (skip system)
+# Render transcript
 for m in st.session_state.messages:
-    if m["role"] == "system":
-        continue
     with st.chat_message(m["role"]):
-        st.markdown(m["content"])  # supports markdown
+        st.markdown(m["content"])  # markdown supported
+
+# Helper: call Vapi Chat API (non-streaming)
+# Endpoint per docs: POST {BASE}/chat with Authorization: Bearer <PRIVATE_KEY>
+# Body: { assistantId, input, previousChatId? }
+# Returns: { id: chatId, output: [{ role: 'assistant', content: '...' }, ...] }
+
+def vapi_chat(private_key: str, assistant_id: str, user_text: str, prev_chat_id: str | None):
+    url = f"{VAPI_BASE_URL}/chat"
+    headers = {
+        "Authorization": f"Bearer {private_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {"assistantId": assistant_id, "input": user_text}
+    if prev_chat_id:
+        payload["previousChatId"] = prev_chat_id
+    r = requests.post(url, headers=headers, json=payload, timeout=60)
+    r.raise_for_status()
+    return r.json()
 
 # Input
 user_text = st.chat_input("Type a message…")
 if user_text:
+    # Show user's message
     st.session_state.messages.append({"role": "user", "content": user_text})
     with st.chat_message("user"):
         st.markdown(user_text)
 
+    # Assistant reply
     with st.chat_message("assistant"):
         placeholder = st.empty()
-
-        if BACKEND == "openai" and client:
-            stream = client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": m["role"], "content": m["content"]}
-                    for m in st.session_state.messages
-                    if m["role"] != "system"
-                ],
-                stream=True,
-            )
-            full = ""
-            for chunk in stream:
-                delta = chunk.choices[0].delta if chunk.choices and chunk.choices[0].delta else None
-                content = getattr(delta, "content", None) if delta else None
-                if content:
-                    full += content
-                    placeholder.markdown(full)
-            st.session_state.messages.append({"role": "assistant", "content": full})
-        elif BACKEND == "custom":
-            reply = "(Custom backend not configured yet.)"
-            placeholder.markdown(reply)
-            st.session_state.messages.append({"role": "assistant", "content": reply})
+        if not st.session_state.VAPI_PRIVATE_KEY:
+            placeholder.warning("Please paste your Vapi **Private API Key** in the sidebar.")
         else:
-            placeholder.warning("No API key set, so I can't reach the model yet.")
+            try:
+                resp = vapi_chat(
+                    private_key=st.session_state.VAPI_PRIVATE_KEY,
+                    assistant_id=ASSISTANT_ID,
+                    user_text=user_text,
+                    prev_chat_id=st.session_state.chat_id,
+                )
+                # Save chat id to maintain context in follow-ups
+                st.session_state.chat_id = resp.get("id", st.session_state.chat_id)
+
+                # Output can be an array of assistant messages; join them
+                output = resp.get("output") or []
+                text_chunks = []
+                for msg in output:
+                    if isinstance(msg, dict) and msg.get("role") == "assistant":
+                        text_chunks.append(str(msg.get("content", "")))
+                    elif isinstance(msg, str):
+                        text_chunks.append(msg)
+                reply = "\n\n".join([t for t in text_chunks if t]) or "(Empty response)"
+                placeholder.markdown(reply)
+                st.session_state.messages.append({"role": "assistant", "content": reply})
+            except requests.HTTPError as e:
+                try:
+                    err_json = e.response.json()
+                    placeholder.error(f"Vapi error: {err_json}")
+                except Exception:
+                    placeholder.error(f"HTTP {e.response.status_code}: {e.response.text}")
+            except Exception as e:
+                placeholder.error(f"Error contacting Vapi: {e}")
+
+# ---------------- Footer ----------------
+with st.expander("Notes", expanded=False):
+    st.markdown(
+        """
+- This chat hits **Vapi Chat API** so you keep the same model, system prompts, and tools configured for your Yamas assistant. 
+- We use `previousChatId` to preserve context between turns (returned as `id` in the response). 
+- You can theme or brand this UI however you like.
+        """
+    )
