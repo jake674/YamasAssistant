@@ -3,7 +3,7 @@ import requests
 import streamlit as st
 
 # ---------------- Page setup (mobile friendly) ----------------
-st.set_page_config(page_title="Yamas Chat (Vapi)", page_icon="🍣", layout="centered")
+st.set_page_config(page_title="Yamas Chat", page_icon="🍣", layout="centered")
 st.markdown(
     """
     <style>
@@ -15,7 +15,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("💬 Yamas Assistant (via Vapi)")
+st.title("💬 Yamas Assistant")
 st.caption("Custom Streamlit chat that talks to your existing Vapi assistant — same model, same system prompts.")
 
 # ---------------- Vapi config ----------------
