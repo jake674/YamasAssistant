@@ -1,7 +1,7 @@
 import streamlit as st
 from textwrap import dedent
 
-st.set_page_config(page_title="Codfather Assistant", page_icon="🎣", layout="wide")
+st.set_page_config(page_title="Yamas Assistant", page_icon="🎣", layout="wide")
 
 # Minimalistic styling for a clean, mobile-friendly look
 st.markdown(
